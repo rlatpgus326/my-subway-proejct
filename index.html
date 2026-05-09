@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>내 멀티 웹 도구 모음</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #3b82f6;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px 20px;
+            margin: 0;
+        }
+
+        h1 {
+            margin-bottom: 40px;
+            font-size: 2.5rem;
+            text-align: center;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .card {
+            background: var(--card);
+            padding: 25px;
+            border-radius: 16px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+            box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.5);
+        }
+
+        .card h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.25rem;
+            color: var(--accent);
+        }
+
+        .card p {
+            margin: 0;
+            font-size: 0.9rem;
+            opacity: 0.7;
+            line-height: 1.5;
+        }
+
+        .category {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🚀 Web App Collection</h1>
+    <div class="grid">
+        <a href="dday.html" class="card">
+            <div>
+                <span class="category">Utility</span>
+                <h2>정밀 D-Day 카운터</h2>
+                <p>중요한 일정까지 남은 시간을 초 단위로 확인하세요.</p>
+            </div>
+        </a>
+        <a href="subway-monitor.html" class="card">
+            <div>
+                <span class="category">Transport</span>
+                <h2>지하철 출발 모니터</h2>
+                <p>실시간 애니메이션과 함께 지하철 출발 현황을 모니터링합니다.</p>
+            </div>
+        </a>
+        <a href="transport-dashboard.html" class="card">
+            <div>
+                <span class="category">Transport</span>
+                <h2>교통 통합 대시보드</h2>
+                <p>전국 버스와 지하철 정보를 한눈에 확인하는 대시보드입니다.</p>
+            </div>
+        </a>
+        <a href="study-planner.html" class="card">
+            <div>
+                <span class="category">Education</span>
+                <h2>스마트 학습 플래너</h2>
+                <p>시험 일정을 입력하면 매일 공부할 분량을 계산해줍니다.</p>
+            </div>
+        </a>
+        <a href="traffic-api.html" class="card">
+            <div>
+                <span class="category">Transport</span>
+                <h2>실시간 교통 정보 (API)</h2>
+                <p>서울/부산 공공데이터 API 연동형 교통 정보 앱입니다.</p>
+            </div>
+        </a>
+    </div>
+</body>
+
+</html>
