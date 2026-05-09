@@ -87,6 +87,7 @@
             gap: 12px;
             background: #1e293b;
             border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
         }
 
         select,
@@ -101,6 +102,17 @@
         }
 
         input {
+            flex: 2;
+            min-width: 150px;
+        }
+
+        #regionSelect,
+        #lineSelect {
+            flex: 1;
+            min-width: 110px;
+        }
+
+        .controls button {
             flex: 1;
         }
 
@@ -327,6 +339,67 @@
 
         .line-default {
             background-color: var(--line-default);
+        }
+
+        /* 모바일 반응형 대응 */
+        @media (max-width: 500px) {
+            body {
+                padding: 10px;
+            }
+
+            header {
+                padding: 16px;
+            }
+
+            header h1 {
+                font-size: 1.1rem;
+                flex-wrap: wrap;
+            }
+
+            .controls {
+                padding: 12px;
+                gap: 8px;
+            }
+
+            #regionSelect,
+            #lineSelect {
+                flex: 1 1 calc(50% - 4px);
+            }
+
+            #stationInput {
+                flex: 1 1 100%;
+                order: 3;
+            }
+
+            .controls button {
+                flex: 1 1 100%;
+                order: 4;
+            }
+
+            .departure-item {
+                padding: 15px 12px;
+                gap: 12px;
+            }
+
+            .departure-time {
+                min-width: 75px;
+                font-size: 1rem;
+                padding: 6px 8px;
+            }
+
+            .status-main {
+                font-size: 0.9rem;
+            }
+
+            .status-sub {
+                font-size: 0.75rem;
+            }
+
+            .line-badge {
+                width: 32px;
+                height: 32px;
+                font-size: 0.75rem;
+            }
         }
     </style>
 </head>
