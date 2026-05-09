@@ -363,8 +363,24 @@
     </div>
 
     <script>
+        // --- API 설정 ---
+        // 공공데이터포털 (https://www.data.go.kr/)에서 발급받은 '부산도시공사 도시철도 도착정보' 서비스 키를 입력하세요.
+        const API_KEY_BUSAN = 'XYJ+FsFZFV5UdMIkusP3dey7CH8RggEQC6/WdPuBddblhIWXhAsJPqb/yXvB+ffzHLDbPqEkxBKcmZ0LWooDrQ==';
+
+        // 서울 열린데이터 광장 (http://data.seoul.go.kr/)에서 발급받은 '서울시 실시간 지하철 도착 정보' API 키를 입력하세요.
+        const API_KEY_SEOUL = '57536d4b616c6f7637384856655a63';
+
+        // 부산 지하철 역 이름 -> ID 매핑 (API 호출용)
+        const busanStationMap = {
+            "부산역": "113", "서면역": "119", "서면": "119", "해운대역": "203", "해운대": "203",
+            "광안리역": "209", "광안": "209", "사상역": "227", "남포동역": "111", "동래역": "125",
+            "연산역": "122", "노포역": "134", "다대포해수욕장역": "101"
+        };
+        // ----------------
+
         // 실시간 출발 관리를 위한 데이터 구조 (targetTimestamp 추가)
         let departureLog = [];
+        let activeStations = []; // 현재 추적 중인 역 {name, region} 목록
 
         // 데이터 저장 함수
         function saveToStorage() {
@@ -396,6 +412,29 @@
             "대구": ["1", "2", "3"],
             "대전": ["1"],
             "광주": ["1"]
+        };
+
+        // 역별 실제 정차 호선 매핑 데이터베이스
+        const stationToLines = {
+            "서울": {
+                "강남역": ["2", "신분당"], "홍대입구": ["2", "경의중앙", "공항철도"], "서울역": ["1", "4", "공항철도", "경의중앙"],
+                "종로1가": ["1"], "잠실역": ["2", "8"], "신도림역": ["1", "2"], "고속터미널": ["3", "7", "9"]
+            },
+            "경기": {
+                "수원역": ["1", "수인분당"], "판교역": ["신분당", "경강"], "정자역": ["수인분당", "신분당"],
+                "일산역": ["경의중앙", "서해"], "부천역": ["1"], "의정부역": ["1"]
+            },
+            "인천": {
+                "인천역": ["1", "수인분당"], "부평역": ["1", "2"], "송도역": ["수인분당"],
+                "인천시청역": ["1", "2"], "검암역": ["공항철도", "2"]
+            },
+            "부산": {
+                "부산역": ["1"], "서면역": ["1", "2"], "해운대역": ["2"],
+                "광안리역": ["2"], "사상역": ["2", "부산김해"], "남포동역": ["1"]
+            },
+            "대구": { "반월당역": ["1", "2"], "동대구역": ["1"], "대구역": ["1"], "중앙로역": ["1"], "범어역": ["2"] },
+            "대전": { "대전역": ["1"], "중앙로역": ["1"], "유성온천역": ["1"], "시청역": ["1"], "판암역": ["1"] },
+            "광주": { "광주역": ["1"], "상무역": ["1"], "금남로4가역": ["1"], "남광주역": ["1"], "소태역": ["1"] }
         };
 
         // 노선별 실제 종착역 데이터베이스
@@ -447,18 +486,32 @@
                 return matchRegion && matchLine;
             });
 
-            if (filteredData.length === 0) {
+            // 1. 시간순 정렬 (가장 빨리 도착하는 순)
+            filteredData.sort((a, b) => a.targetTimestamp - b.targetTimestamp);
+
+            // 2. 각 방면(dest)별로 가장 빠른 열차 하나만 추출
+            const fastestPerDest = new Map();
+            filteredData.forEach(item => {
+                if (!fastestPerDest.has(item.dest)) {
+                    fastestPerDest.set(item.dest, item);
+                }
+            });
+
+            const displayData = Array.from(fastestPerDest.values());
+
+            if (displayData.length === 0) {
                 feedContainer.innerHTML = '<div style="text-align:center; padding:80px; color:#475569; font-size: 0.9rem; font-weight: 600;">[SYSTEM] NO ACTIVE TRACKING. INPUT STATION CODE TO BEGIN.</div>';
                 return;
             }
 
-            filteredData.forEach(item => {
+            displayData.forEach(item => {
                 // 시간 및 진행도 계산
                 const now = Date.now();
                 const diff = Math.max(0, Math.floor((item.targetTimestamp - now) / 1000));
                 const min = Math.floor(diff / 60);
                 const sec = diff % 60;
-                const timeText = diff > 0 ? `${min}:${sec < 10 ? '0' : ''}${sec}` : "출발함";
+                // 실시간 메시지(전역 출발, 진입 등)가 있으면 우선 표시, 없으면 남은 시간 표시
+                const timeText = (item.status && isNaN(parseInt(item.status.charAt(0)))) ? item.status : (diff > 0 ? `${min}:${sec < 10 ? '0' : ''}${sec}` : "진입/도착");
                 const isUrgent = diff > 0 && diff < 60;
 
                 // 진행도 계산 (움직이는 지하철)
@@ -506,83 +559,180 @@
         }
 
         // 사용자가 출발역을 직접 입력하여 추가하는 기능
-        function addTrackingStation() {
+        async function addTrackingStation() {
             const input = document.getElementById('stationInput');
-            const regionSelect = document.getElementById('regionSelect');
-            const region = regionSelect.value;
-            const line = document.getElementById('lineSelect').value;
+            const region = document.getElementById('regionSelect').value;
+            const lineFilter = document.getElementById('lineSelect').value;
+            let stationName = input.value.trim();
 
-            if (!input.value.trim()) return;
+            if (!stationName) return;
 
-            // 현재 선택된 지역 정보 저장
-            localStorage.setItem('lastRegion', region);
-            localStorage.setItem('lastLine', line);
+            // 데이터베이스에 등록된 역인지 확인 (시뮬레이션 상의 '실제' 역 검증)
+            const validStations = stationDatabase[region] || [];
+            const matchedStation = validStations.find(s =>
+                s === stationName || s === stationName + "역" || s === stationName.replace(/역$/, "")
+            );
 
-            const regionLines = lineDatabase[region] || ["1"];
+            if (!matchedStation) {
+                alert(`[시스템] '${stationName}'은(는) 현재 목록에 없는 역입니다. 자동완성 목록에 있는 역을 입력해주세요.`);
+                return;
+            }
 
-            // 선택된 호선이 '전체'일 경우 랜덤 배정
-            const selectedLine = line === '전체' ? regionLines[Math.floor(Math.random() * regionLines.length)] : line;
-            // 종착역 데이터베이스에서 해당 노선의 종점 선택
-            const terminals = (terminalDatabase[region] && terminalDatabase[region][selectedLine]) || ["종점"];
-            const otherTerminals = terminals.filter(s => s !== input.value.trim());
-            const randomDest = otherTerminals.length > 0 ? otherTerminals[Math.floor(Math.random() * otherTerminals.length)] : terminals[0];
+            // 정식 명칭으로 보정 (예: '강남' -> '강남역')
+            stationName = matchedStation;
 
-            const initialTime = (Math.floor(Math.random() * 300) + 60);
+            console.log(`[SIMULATION] Generating data for ${stationName} in ${region}...`);
 
-            const newItem = {
-                region: region,
-                line: selectedLine,
-                dest: randomDest + "행",
-                station: input.value.trim(),
-                initialTime: initialTime,
-                targetTimestamp: Date.now() + initialTime * 1000 // 1~6분 사이 랜덤
-            };
+            // 해당 역에 실제로 정차하는 호선 목록 가져오기
+            const availableLines = stationToLines[region]?.[stationName] || [lineDatabase[region][0]];
 
-            departureLog.unshift(newItem);
-            saveToStorage(); // 자동 저장
-            input.value = '';
-            renderFeed();
+            // 선택된 호선 필터에 따라 추가할 호선 결정
+            const linesToAdd = lineFilter === '전체'
+                ? availableLines
+                : (availableLines.includes(lineFilter) ? [lineFilter] : []);
+
+            if (linesToAdd.length === 0) {
+                alert(`[시스템] ${stationName}에는 ${lineFilter}${isNaN(lineFilter) ? '' : '호선'}이 정차하지 않습니다.`);
+                return;
+            }
+
+            const now = Date.now();
+
+            // 기존 동일 역 데이터 제거
+            departureLog = departureLog.filter(item => item.station !== stationName || item.region !== region);
+
+            linesToAdd.forEach(line => {
+                const terminals = (terminalDatabase[region] && terminalDatabase[region][line]) || ["종점"];
+                // 상/하행 양방향 시뮬레이션 (최대 2개 방향)
+                terminals.slice(0, 2).forEach((term, index) => {
+                    const waitTime = Math.floor(Math.random() * 400) + 60; // 1~7분 랜덤
+                    departureLog.push({
+                        region: region,
+                        line: line,
+                        dest: term,
+                        station: stationName,
+                        initialTime: waitTime,
+                        targetTimestamp: now + (waitTime * 1000)
+                    });
+                });
+            });
         }
 
-        // 주기적으로 새로운 정보가 추가되는 것처럼 보이게 하는 시뮬레이션
+        // 부산 API 데이터 변환 및 추가
+        function updateDataFromBusanAPI(arrivalList, stationName, lineFilter) {
+            const now = Date.now();
+            // 기존 동일 역 데이터 제거
+            departureLog = departureLog.filter(item => item.station !== stationName || item.region !== '부산');
+
+            arrivalList.forEach(arrival => {
+                // 호선 필터 적용 (예: 해운대역에서 2호선만 보고 싶을 때)
+                if (lineFilter !== '전체' && arrival.lineId !== lineFilter) return;
+
+                const initialTime = parseInt(arrival.arrivalTime);
+                if (initialTime <= 0) return;
+
+                departureLog.push({
+                    region: '부산',
+                    line: arrival.lineId,
+                    dest: arrival.endStationName, // '방면'은 renderFeed에서 추가됨
+                    station: stationName,
+                    initialTime: initialTime,
+                    targetTimestamp: now + (initialTime * 1000),
+                    status: arrival.statusMsg || "" // 부산 API 상태 메시지 저장
+                });
+            });
+            saveToStorage();
+        }
+
+        // 서울 API 데이터 변환 및 추가
+        function updateDataFromSeoulAPI(arrivalList, stationName, lineFilter) {
+            const now = Date.now();
+            departureLog = departureLog.filter(item => item.station !== stationName || item.region !== '서울');
+
+            const seoulLineMap = {
+                "1001": "1", "1002": "2", "1003": "3", "1004": "4", "1005": "5",
+                "1006": "6", "1007": "7", "1008": "8", "1009": "9",
+                "1063": "경의중앙", "1065": "공항철도", "1067": "경춘선",
+                "1071": "수인분당", "1075": "수인분당", "1077": "신분당",
+                "1092": "우이신설"
+            };
+
+            arrivalList.forEach(arrival => {
+                const lineName = seoulLineMap[arrival.subwayId] || arrival.subwayId.substring(2, 4).replace(/^0+/, '');
+                if (lineFilter !== '전체' && lineName !== lineFilter) return;
+
+                const initialTime = parseInt(arrival.barvlDt);
+                if (isNaN(initialTime)) return;
+
+                departureLog.push({
+                    region: '서울',
+                    line: lineName,
+                    dest: arrival.trainLineNm.replace(/ 방면$/, ""),
+                    station: stationName,
+                    initialTime: initialTime === 0 ? 30 : initialTime, // 0초인 경우 최소 진행도 보정
+                    targetTimestamp: now + (initialTime * 1000),
+                    status: arrival.arvlMsg2 // "전역 출발", "진입" 등 실제 상태 메시지 저장
+                });
+            });
+            saveToStorage();
+        }
+
+        // 모든 활성화된 역의 데이터를 갱신 (시뮬레이션 데이터 재생성)
+        async function refreshAllStations() {
+            if (activeStations.length === 0) return;
+            const now = Date.now();
+
+            for (const station of activeStations) {
+                if (station.region === '부산') {
+                    // 부산은 API 다시 호출
+                    const stationId = busanStationMap[station.name] || busanStationMap[station.name + "역"];
+                    if (stationId) {
+                        try {
+                            const response = await fetch(`https://apis.data.go.kr/6260000/BusanSubwayArrivalService/getArrivalList?serviceKey=${API_KEY_BUSAN}&resultType=json&stationId=${stationId}`);
+                            const data = await response.json();
+                            const itemList = data.getArrivalList?.item;
+                            if (itemList) {
+                                updateDataFromBusanAPI(Array.isArray(itemList) ? itemList : [itemList], station.name, '전체');
+                            }
+                        } catch (e) { console.error('Auto Refresh Error:', e); }
+                    }
+                } else if (station.region === '서울') {
+                    // 서울은 API 다시 호출
+                    const queryName = station.name.endsWith('역') ? station.name.slice(0, -1) : station.name;
+                    try {
+                        const response = await fetch(`https://swopenapi.seoul.go.kr/api/subway/${API_KEY_SEOUL}/json/realtimeStationArrival/0/20/${encodeURIComponent(queryName)}`);
+                        const data = await response.json();
+                        if (data.realtimeArrivalList) {
+                            updateDataFromSeoulAPI(data.realtimeArrivalList, station.name, '전체');
+                        }
+                    } catch (e) { console.error('Seoul Auto Refresh Error:', e); }
+                } else {
+                    // 기타 지역 시뮬레이션 보충
+                    const remaining = departureLog.filter(item => item.station === station.name && (item.targetTimestamp - now > 0));
+                    if (remaining.length < 2) {
+                        const lines = stationToLines[station.region]?.[station.name] || ["1"];
+                        generateSimulationData(station.region, station.name, [lines[Math.floor(Math.random() * lines.length)]]);
+                    }
+                }
+            }
+        }
+
         function simulateNewDeparture() {
-            // 출발한 지 5초 지난 데이터 삭제
             const now = Date.now();
             const originalLength = departureLog.length;
-            departureLog = departureLog.filter(item => (now - item.targetTimestamp) < 5000);
-
-            if (departureLog.length !== originalLength) saveToStorage(); // 목록 변경 시 저장
-            renderFeed();
+            departureLog = departureLog.filter(item => (now - item.targetTimestamp) < 10000);
+            if (departureLog.length !== originalLength) {
+                saveToStorage();
+                renderFeed();
+            } else {
+                renderFeed();
+            }
         }
 
         window.onload = () => {
-            // 예시 데이터 추가
-            const savedLog = loadFromStorage();
-            if (savedLog.length > 0) {
-                const now = Date.now();
-                departureLog = savedLog.map(item => ({
-                    ...item,
-                    // 저장된 데이터를 불러올 때 타이머를 초기 시간으로 재설정 (새 생명 부여)
-                    targetTimestamp: now + (item.initialTime || 120) * 1000
-                }));
-            } else {
-                departureLog.push({
-                    region: "서울", line: "2", dest: "성수", station: "강남역",
-                    initialTime: 120,
-                    targetTimestamp: Date.now() + 120000
-                });
-            }
-
-            // 마지막 지역 설정 불러오기
-            const lastRegion = localStorage.getItem('lastRegion');
-            if (lastRegion) document.getElementById('regionSelect').value = lastRegion;
-
             updateRegionContext();
-
-            const lastLine = localStorage.getItem('lastLine');
-            if (lastLine) document.getElementById('lineSelect').value = lastLine;
-
-            setInterval(simulateNewDeparture, 1000); // 1초마다 실시간 갱신
+            setInterval(simulateNewDeparture, 1000);
+            setInterval(refreshAllStations, 15000); // 정확도를 위해 갱신 주기를 15초로 단축
         };
     </script>
 
